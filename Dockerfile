@@ -53,7 +53,20 @@ RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted
 # some packages are optional in deepface. activate if your task depends on one.
 # RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org cmake==3.24.1.1
 # RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org dlib==19.20.0
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org lightgbm==2.3.1
+# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org
+# lightgbm==2.3.1
+
+# -----------------------------------
+# Pre-download weights
+
+# Facenet512 (https://github.com/serengil/deepface_models/releases/download/v1.0/facenet512_weights.h5 to
+# /root/.deepface/weights/facenet512_weights.h5)
+RUN mkdir -p /root/.deepface/weights
+RUN wget https://github.com/serengil/deepface_models/releases/download/v1.0/facenet512_weights.h5 -O /root/.deepface/weights/facenet512_weights.h5
+
+# Yunet (https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx to
+# /root/.deepface/weights/face_detection_yunet_2023mar.onnx)
+RUN wget https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx -O /root/.deepface/weights/face_detection_yunet_2023mar.onnx
 
 # -----------------------------------
 # environment variables
