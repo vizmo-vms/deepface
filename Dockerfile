@@ -1,5 +1,9 @@
+# syntax=docker/dockerfile:1.7
 # base image
-FROM python:3.8.12
+# The slim variant has the same Python build without the full image's compilers, ImageMagick
+# and version control tools. Every package below installs from a prebuilt wheel, apart from
+# fire, which is pure Python.
+FROM python:3.8.12-slim
 LABEL org.opencontainers.image.source https://github.com/serengil/deepface
 
 # -----------------------------------
@@ -7,66 +11,43 @@ LABEL org.opencontainers.image.source https://github.com/serengil/deepface
 RUN mkdir -p /app && chown -R 1001:0 /app
 RUN mkdir /app/deepface
 
-
-
 # -----------------------------------
 # switch to application directory
 WORKDIR /app
 
 # -----------------------------------
-# update image os
-# Install system dependencies
-RUN apt-get update && apt-get install -y \
-    ffmpeg \
-    libsm6 \
-    libxext6 \
-    libhdf5-dev \
-    && rm -rf /var/lib/apt/lists/*
+# install dependencies
+# requirements_docker.txt pins every package, so --no-deps keeps pip from pulling in the CUDA
+# build of TensorFlow or the GUI build of OpenCV for packages that ask for them. The pip wheels
+# bring their own FFmpeg (OpenCV) and HDF5 (h5py), so the image needs no system packages.
+COPY ./requirements_docker.txt /app/requirements_docker.txt
+RUN pip install --no-cache-dir --no-deps -r /app/requirements_docker.txt
 
 # -----------------------------------
 # Copy required files from repo into image
 COPY ./deepface /app/deepface
-# even though we will use local requirements, this one is required to perform install deepface from source code
+# setup.py reads these files
 COPY ./requirements.txt /app/requirements.txt
-COPY ./requirements_local /app/requirements_local.txt
 COPY ./package_info.json /app/
 COPY ./setup.py /app/
 COPY ./README.md /app/
 COPY ./entrypoint.sh /app/deepface/api/src/entrypoint.sh
 
-# -----------------------------------
-# if you plan to use a GPU, you should install the 'tensorflow-gpu' package
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org tensorflow-gpu
-
-# if you plan to use face anti-spoofing, then activate this line
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org torch==2.1.2
-# -----------------------------------
-# install deepface from pypi release (might be out-of-date)
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org deepface
-# -----------------------------------
-# install dependencies - deepface with these dependency versions is working
-RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org -r /app/requirements_local.txt
 # install deepface from source code (always up-to-date)
-RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org -e .
+RUN pip install --no-cache-dir --no-deps -e .
 
 # -----------------------------------
-# some packages are optional in deepface. activate if your task depends on one.
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org cmake==3.24.1.1
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org dlib==19.20.0
-# RUN pip install --trusted-host pypi.org --trusted-host pypi.python.org --trusted-host=files.pythonhosted.org
-# lightgbm==2.3.1
+# Pre-download weights, pinned by checksum
 
-# -----------------------------------
-# Pre-download weights
+# Facenet512
+ADD --checksum=sha256:3f76b5117a9ca574d536af8199e6720089eb4ad3dc7e93534496d88265de864f \
+    https://github.com/serengil/deepface_models/releases/download/v1.0/facenet512_weights.h5 \
+    /root/.deepface/weights/facenet512_weights.h5
 
-# Facenet512 (https://github.com/serengil/deepface_models/releases/download/v1.0/facenet512_weights.h5 to
-# /root/.deepface/weights/facenet512_weights.h5)
-RUN mkdir -p /root/.deepface/weights
-RUN wget https://github.com/serengil/deepface_models/releases/download/v1.0/facenet512_weights.h5 -O /root/.deepface/weights/facenet512_weights.h5
-
-# Yunet (https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx to
-# /root/.deepface/weights/face_detection_yunet_2023mar.onnx)
-RUN wget https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx -O /root/.deepface/weights/face_detection_yunet_2023mar.onnx
+# Yunet
+ADD --checksum=sha256:8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4 \
+    https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx \
+    /root/.deepface/weights/face_detection_yunet_2023mar.onnx
 
 # -----------------------------------
 # environment variables

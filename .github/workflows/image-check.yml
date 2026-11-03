@@ -1,0 +1,67 @@
+name: Compare Docker Image
+
+# Builds the image from a pull request and checks that it returns the same face
+# embeddings and verification distances as the image the Vizmo platform pins.
+
+on:
+  pull_request:
+    paths:
+      - 'Dockerfile'
+      - 'requirements_docker.txt'
+      - 'requirements.txt'
+      - 'setup.py'
+      - 'entrypoint.sh'
+      - 'deepface/**'
+      - '.github/workflows/image-check.yml'
+      - '.github/scripts/compare_images.py'
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    env:
+      CURRENT_IMAGE: ghcr.io/vizmo-vms/deepface:20250204@sha256:65ae0a859242b850bd9140b4591be20069e7f3b6b0f23e5056e7bf60a07f6822
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Both images and the build need more room than the runner has free.
+      - name: Free disk space
+        run: sudo rm -rf /usr/local/lib/android /usr/share/dotnet /opt/ghc /opt/hostedtoolcache/CodeQL
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          load: true
+          tags: deepface:pr
+
+      - name: Start the current and the new image
+        run: |
+          docker pull "$CURRENT_IMAGE"
+          docker run -d --name current -p 5001:5000 "$CURRENT_IMAGE"
+          docker run -d --name new -p 5002:5000 deepface:pr
+
+      - name: Compare image sizes
+        run: |
+          for image in "$CURRENT_IMAGE" deepface:pr; do
+            size=$(docker image inspect --format '{{.Size}}' "$image")
+            echo "$image: $((size / 1000000)) MB" | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          docker history deepface:pr
+
+      - name: Compare results
+        run: python3 .github/scripts/compare_images.py http://localhost:5001 http://localhost:5002 tests/dataset
+
+      - name: Show container logs
+        if: failure()
+        run: |
+          docker logs current 2>&1 | tail -100
+          docker logs new 2>&1 | tail -100
